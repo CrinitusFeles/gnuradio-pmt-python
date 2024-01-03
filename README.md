@@ -23,8 +23,10 @@ git install git+https://github.com/CrinitusFeles/gnuradio-pmt-python.git
 * PMT.NULL
 * PMT.INT32
 * PMT.INT64
+* PMT.DOUBLE
 * PMT.COMPLEX
 * PMT.STRING
+* PMT.PAIR
 * PMT.TUPLE
 * PMT.VECTOR
 * PMT.DICT
