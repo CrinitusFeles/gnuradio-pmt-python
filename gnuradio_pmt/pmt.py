@@ -23,9 +23,9 @@ class PMT:
             return struct.pack('>B', PST.TRUE.value)
 
         @staticmethod
-        def parse(data: bytes) -> Literal[True]:
+        def _parse(data: bytes) -> tuple[Literal[True], int]:
             if PST(data[0]) == PST.TRUE:
-                return True
+                return True, 1
             raise TypeError(f'incorrect type! expected PST.TRUE got {PST(data[0])}')
 
     class FALSE(PMT_t):
@@ -34,9 +34,9 @@ class PMT:
             return struct.pack('>B', PST.FALSE.value)
 
         @staticmethod
-        def parse(data: bytes) -> Literal[False]:
+        def _parse(data: bytes) -> tuple[Literal[False], int]:
             if PST(data[0]) == PST.FALSE:
-                return False
+                return False, 1
             raise TypeError(f'incorrect type! expected PST.FALSE got {PST(data[0])}')
 
     class NULL(PMT_t):
@@ -45,9 +45,9 @@ class PMT:
             return struct.pack('>B', PST.NULL.value)
 
         @staticmethod
-        def parse(data: bytes) -> None:
+        def _parse(data: bytes) -> tuple[None, int]:
             if PST(data[0]) == PST.NULL:
-                return None
+                return None, 1
             raise TypeError(f'incorrect type! expected PST.NULL got {PST(data[0])}')
 
     class STRING(PMT_t):
@@ -61,9 +61,10 @@ class PMT:
             return struct.pack('>BH', PST.SYMBOL.value, len(self.val)) + self.val.encode('utf-8')
 
         @staticmethod
-        def parse(data: bytes) -> str:
+        def _parse(data: bytes) -> tuple[str, int]:
             if PST(data[0]) == PST.SYMBOL:
-                return data[struct.unpack('>H', data[1:3])[0]:].decode('utf-8')
+                result: str = data[struct.unpack('>H', data[1:3])[0]:].decode('utf-8')
+                return result, len(result) + 3
             raise TypeError(f'incorrect type! expected PST.SYMBOL got {PST(data[0])}')
 
     class INT32(PMT_t):
@@ -76,9 +77,9 @@ class PMT:
             return struct.pack('>BI', PST.INT32.value, self.val)
 
         @staticmethod
-        def parse(data: bytes) -> int:
+        def _parse(data: bytes) -> tuple[int, int]:
             if PST(data[0]) == PST.INT32:
-                return struct.unpack('>I', data[1:5])[0]
+                return struct.unpack('>I', data[1:5])[0], 5
             raise TypeError(f'incorrect type! expected PST.INT32 got {PST(data[0])}')
 
     class INT64(PMT_t):
@@ -89,9 +90,9 @@ class PMT:
             return struct.pack('>BQ', PST.INT64.value, self.val)
 
         @staticmethod
-        def parse(data: bytes) -> int:
+        def _parse(data: bytes) -> tuple[int, int]:
             if PST(data[0]) == PST.INT64:
-                return struct.unpack('>Q', data[1:5])[0]
+                return struct.unpack('>Q', data[1:5])[0], 9
             raise TypeError(f'incorrect type! expected PST.INT64 got {PST(data[0])}')
 
     class VECTOR(PMT_t):
@@ -120,7 +121,9 @@ class PMT:
         @staticmethod
         def parse(data: bytes):
             if PST(data[0]) == PST.PAIR:
-                raise NotImplementedError
+                parsed_len = 1
+                while parsed_len < len(data):
+                    PMT.__call__()
             raise TypeError(f'incorrect type! expected PST.DOUBLE got {PST(data[0])}')
 
     class DICT(PMT_t):
