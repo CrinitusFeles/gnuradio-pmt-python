@@ -4,7 +4,7 @@ from enum import Enum
 class PST(Enum):
     TRUE = 0x00
     FALSE = 0x01
-    SYMBOL = 0x02
+    STRING = 0x02
     INT32 = 0x03
     DOUBLE = 0x04
     COMPLEX = 0x05

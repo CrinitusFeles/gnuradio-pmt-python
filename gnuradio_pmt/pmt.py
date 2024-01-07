@@ -1,7 +1,7 @@
 
 import struct
 from abc import ABCMeta
-from typing import Literal
+from typing import Any, Literal
 from gnuradio_pmt.pmt_types import PST
 
 
@@ -11,12 +11,14 @@ class PMT_t(metaclass=ABCMeta):
 
 
 class PMT:
-
-    # parse_handlers = {el.value:   for el in list(PST)}
     @staticmethod
-    def parse(data: bytes):
-        # PMT.
-        ...
+    def parse(data: bytes) -> Any:
+        return PMT._parse(data)[0]
+
+    @staticmethod
+    def _parse(data: bytes) -> tuple[Any, int]:
+        return PMT.__dict__[PST(data[0]).name]._parse(data)
+
     class TRUE(PMT_t):
         @staticmethod
         def to_bytes() -> bytes:
@@ -58,12 +60,13 @@ class PMT:
                 raise TypeError
 
         def to_bytes(self) -> bytes:
-            return struct.pack('>BH', PST.SYMBOL.value, len(self.val)) + self.val.encode('utf-8')
+            return struct.pack('>BH', PST.STRING.value, len(self.val)) + self.val.encode('utf-8')
 
         @staticmethod
         def _parse(data: bytes) -> tuple[str, int]:
-            if PST(data[0]) == PST.SYMBOL:
-                result: str = data[struct.unpack('>H', data[1:3])[0]:].decode('utf-8')
+            if PST(data[0]) == PST.STRING:
+                str_len: int = struct.unpack('>H', data[1:3])[0]
+                result: str = data[3:3+str_len].decode('utf-8')
                 return result, len(result) + 3
             raise TypeError(f'incorrect type! expected PST.SYMBOL got {PST(data[0])}')
 
@@ -102,6 +105,20 @@ class PMT:
         def to_bytes(self) -> bytes:
             return struct.pack('>BI', PST.VECTOR.value, len(self.val)) + b''.join([el.to_bytes() for el in self.val])
 
+        @staticmethod
+        def _parse(data: bytes) -> tuple[list[Any], int]:
+            if PST(data[0]) == PST.VECTOR:
+                vec_size: int = struct.unpack('>I', data[1:5])[0]
+                vec_list: list = []
+                parsed_size = 0
+                while len(vec_list) < vec_size:
+                    val, size = PMT._parse(data[5 + parsed_size:])
+                    parsed_size += size
+                    vec_list.append(val)
+                return vec_list, parsed_size + 5
+
+            raise TypeError(f'incorrect type! expected PST.DOUBLE got {PST(data[0])}')
+
 
     class TUPLE(PMT_t):
         def __init__(self, values: tuple[PMT_t, ...]) -> None:
@@ -109,6 +126,20 @@ class PMT:
 
         def to_bytes(self) -> bytes:
             return struct.pack('>BI', PST.TUPLE.value, len(self.val)) + b''.join([el.to_bytes() for el in self.val])
+
+        @staticmethod
+        def _parse(data: bytes) -> tuple[tuple, int]:
+            if PST(data[0]) == PST.TUPLE:
+                vec_size: int = struct.unpack('>I', data[1:5])[0]
+                vec_list: list = []
+                parsed_size = 0
+                while len(vec_list) < vec_size:
+                    val, size = PMT._parse(data[5 + parsed_size:])
+                    parsed_size += size
+                    vec_list.append(val)
+                return tuple(vec_list), parsed_size + 5
+
+            raise TypeError(f'incorrect type! expected PST.DOUBLE got {PST(data[0])}')
 
     class PAIR(PMT_t):
         def __init__(self, car: PMT_t, cdr: PMT_t) -> None:
@@ -119,12 +150,12 @@ class PMT:
             return struct.pack('>B', PST.PAIR.value) + self.car.to_bytes() + self.cdr.to_bytes()
 
         @staticmethod
-        def parse(data: bytes):
+        def _parse(data: bytes) -> tuple[tuple[Any, Any], int]:
             if PST(data[0]) == PST.PAIR:
-                parsed_len = 1
-                while parsed_len < len(data):
-                    PMT.__call__()
-            raise TypeError(f'incorrect type! expected PST.DOUBLE got {PST(data[0])}')
+                car, car_size = PMT._parse(data[1:])
+                cdr, cdr_size = PMT._parse(data[1 + car_size:])
+                return (car, cdr), car_size + cdr_size + 1
+            raise TypeError(f'incorrect type! expected PST.PAIR got {PST(data[0])}')
 
     class DICT(PMT_t):
         def __init__(self, value: dict[PMT_t, PMT_t]) -> None:
@@ -134,6 +165,18 @@ class PMT:
             return b''.join([struct.pack('>B', PST.DICT.value) + PMT.PAIR(key, val).to_bytes()
                             for key, val in self.val.items()]) + PMT.NULL.to_bytes()
 
+        @staticmethod
+        def _parse(data: bytes) -> tuple[dict[Any, Any], int]:
+            if PST(data[0]) == PST.DICT:
+                parsed_len = 0
+                result = []
+                while (PST(data[parsed_len]) == PST.DICT):
+                    val, size = PMT._parse(data[1 + parsed_len:])
+                    parsed_len += size + 1
+                    result.append(val)
+                return {key: val for key, val in result}, parsed_len + 2
+            raise TypeError(f'incorrect type! expected PST.DICT got {PST(data[0])}')
+
     class DOUBLE(PMT_t):
         def __init__(self, value: float) -> None:
             self.val: float = value
@@ -142,9 +185,9 @@ class PMT:
             return struct.pack('>Bd', PST.DOUBLE.value, self.val)
 
         @staticmethod
-        def parse(data: bytes) -> float:
+        def _parse(data: bytes) -> tuple[float, int]:
             if PST(data[0]) == PST.DOUBLE:
-                return struct.unpack('>d', data[1:5])[0]
+                return struct.unpack('>d', data[1:9])[0], 9
             raise TypeError(f'incorrect type! expected PST.DOUBLE got {PST(data[0])}')
 
     class COMPLEX(PMT_t):
@@ -155,114 +198,21 @@ class PMT:
             return struct.pack('>Bdd', PST.COMPLEX.value, self.val.real, self.val.imag)
 
         @staticmethod
-        def parse(data: bytes) -> complex:
+        def _parse(data: bytes) -> tuple[complex, int]:
             if PST(data[0]) == PST.COMPLEX:
-                real, imag = struct.unpack('>dd', data[1:9])
-                return complex(real, imag)
+                real, imag = struct.unpack('>dd', data[1:17])
+                return complex(real, imag), 17
             raise TypeError(f'incorrect type! expected PST.COMPLEX got {PST(data[0])}')
-
-# class PMT_TRUE(PMT):
-#     @staticmethod
-#     def to_bytes() -> bytes:
-#         return struct.pack('>B', PST.TRUE.value)
-
-
-# class PMT_FALSE(PMT):
-#     @staticmethod
-#     def to_bytes() -> bytes:
-#         return struct.pack('>B', PST.FALSE.value)
-
-# class PMT_NULL(PMT):
-#     @staticmethod
-#     def to_bytes() -> bytes:
-#         return struct.pack('>B', PST.NULL.value)
-
-# class PMT_STRING(PMT):
-#     def __init__(self, value: str) -> None:
-#         if isinstance(value, str):
-#             self.val: str = value
-#         else:
-#             raise TypeError
-
-#     def to_bytes(self) -> bytes:
-#         return struct.pack('>BH', PST.SYMBOL.value, len(self.val)) + self.val.encode('utf-8')
-
-
-# class PMT_INT32(PMT):
-#     def __init__(self, value: int) -> None:
-#         self.val: int = value
-#         if value > 0xFFFFFFFF:
-#             raise ValueError('PMT_INT32 value too big')
-
-#     def to_bytes(self) -> bytes:
-#         return struct.pack('>BI', PST.INT32.value, self.val)
-
-
-# class PMT_INT64(PMT):
-#     def __init__(self, value: int) -> None:
-#         self.val: int = value
-
-#     def to_bytes(self) -> bytes:
-#         return struct.pack('>BI', PST.INT64.value, self.val)
-
-
-# class PMT_VECTOR(PMT):
-#     def __init__(self, values: list[PMT]) -> None:
-#         self.val: list[PMT] = values
-
-#     def to_bytes(self) -> bytes:
-#         return struct.pack('>BI', PST.VECTOR.value, len(self.val)) + b''.join([el.to_bytes() for el in self.val])
-
-
-# class PMT_TUPLE(PMT):
-#     def __init__(self, values: tuple[PMT, ...]) -> None:
-#         self.val: tuple[PMT, ...] = values
-
-#     def to_bytes(self) -> bytes:
-#         return struct.pack('>BI', PST.TUPLE.value, len(self.val)) + b''.join([el.to_bytes() for el in self.val])
-
-
-# class PMT_PAIR(PMT):
-#     def __init__(self, car: PMT, cdr: PMT) -> None:
-#         self.car: PMT = car
-#         self.cdr: PMT = cdr
-
-#     def to_bytes(self) -> bytes:
-#         return struct.pack('>B', PST.PAIR.value) + self.car.to_bytes() + self.cdr.to_bytes()
-
-
-# class PMT_DICT(PMT):
-#     def __init__(self, value: dict[PMT, PMT]) -> None:
-#         self.val: dict[PMT, PMT] = value
-
-#     def to_bytes(self) -> bytes:
-#         return b''.join([struct.pack('>B', PST.DICT.value) + PMT_PAIR(key, val).to_bytes()
-#                          for key, val in self.val.items()]) + PMT_NULL.to_bytes()
-
-
-# class PMT_DOUBLE(PMT):
-#     def __init__(self, value: float) -> None:
-#         self.val: float = value
-
-#     def to_bytes(self) -> bytes:
-#         return struct.pack('>Bd', PST.DOUBLE.value, self.val)
-
-
-# class PMT_COMPLEX(PMT):
-#     def __init__(self, value: complex) -> None:
-#         self.val: complex = value
-
-#     def to_bytes(self) -> bytes:
-#         return struct.pack('>Bdd', PST.COMPLEX.value, self.val.real, self.val.imag)
 
 
 if __name__ == '__main__':
-    # vec = PMT.VECTOR([PMT.INT32(123), PMT.DOUBLE(2.3)])
-    # val = PMT.DICT({PMT.STRING('freq'): PMT.INT32(437000000),
-    #                 PMT.STRING('cr'): PMT.INT32(1),
-    #                 PMT.STRING('bw'): PMT.INT32(125000),
-    #                 PMT.DICT({PMT.STRING('b'): PMT.PAIR(PMT.INT32(312), PMT.INT32(567))}): PMT.STRING('hello')})
-    # print(val.to_bytes().hex(' ').upper())
-    # print([el.value for el in list(PST)])
-    print(PST(5))
+    var: bytes = PMT.PAIR(PMT.PAIR(PMT.FALSE(), PMT.NULL()),
+                          PMT.PAIR(PMT.STRING('123'), PMT.INT32(866))).to_bytes()
+    var2: bytes = PMT.TUPLE((PMT.STRING('hello'), PMT.INT32(23),
+                             PMT.PAIR(PMT.PAIR(PMT.FALSE(), PMT.NULL()),
+                                      PMT.PAIR(PMT.STRING('123'), PMT.INT32(866))))).to_bytes()
+    var3: bytes = PMT.DICT({PMT.STRING('hello'): PMT.COMPLEX(complex(23, 99)),
+                            PMT.STRING('world'): PMT.DOUBLE(23.88)}).to_bytes()
+    print(var.hex(' ').upper())
+    print(PMT.parse(var))
 

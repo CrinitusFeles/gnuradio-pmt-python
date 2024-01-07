@@ -31,7 +31,7 @@ git install git+https://github.com/CrinitusFeles/gnuradio-pmt-python.git
 * PMT.VECTOR
 * PMT.DICT
 
-After creating `PMT` object to send it over network you need to convert it to bytes calling method `PMT.to_bytes()`
+After creating `PMT` object to send it over network you need to convert it to bytes calling method `PMT.to_bytes()`. To parse received data from ZMQ Sink you can call `PMT.parse()`.
 
 ### Working with Gnuradio's ZMQ Message Sink
 
@@ -68,7 +68,7 @@ def client(addr: str = '172.31.2.119:5501'):
     try:
         while True:
             msg = socket.recv()
-            print(f'got_msg {len(msg)}: ', msg)
+            print(f'got_msg with len {len(msg)}: ', PMT.parse(msg))
             print(msg.hex(' ').upper())
     except KeyboardInterrupt:
         print('Shutting down...')
