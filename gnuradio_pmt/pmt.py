@@ -174,7 +174,7 @@ class PMT:
                     val, size = PMT._parse(data[1 + parsed_len:])
                     parsed_len += size + 1
                     result.append(val)
-                return {key: val for key, val in result}, parsed_len + 2
+                return {key: val for key, val in result}, parsed_len + 1
             raise TypeError(f'incorrect type! expected PST.DICT got {PST(data[0])}')
 
     class DOUBLE(PMT_t):
@@ -211,8 +211,8 @@ if __name__ == '__main__':
     var2: bytes = PMT.TUPLE((PMT.STRING('hello'), PMT.INT32(23),
                              PMT.PAIR(PMT.PAIR(PMT.FALSE(), PMT.NULL()),
                                       PMT.PAIR(PMT.STRING('123'), PMT.INT32(866))))).to_bytes()
-    var3: bytes = PMT.DICT({PMT.STRING('hello'): PMT.COMPLEX(complex(23, 99)),
-                            PMT.STRING('world'): PMT.DOUBLE(23.88)}).to_bytes()
+    var3: bytes = PMT.VECTOR([PMT.DICT({PMT.STRING('hello'): PMT.COMPLEX(complex(23, 99)),
+                              PMT.STRING('world'): PMT.DOUBLE(23.88)})]).to_bytes()
     print(var.hex(' ').upper())
-    print(PMT.parse(var))
+    print(PMT.parse(var3))
 
